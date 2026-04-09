@@ -1,0 +1,21 @@
+# Data (too large for GitHub)
+data/raw/
+data/embeddings/*.npy
+*.json.gz
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Models
+models/*.pkl
+models/*.joblib
