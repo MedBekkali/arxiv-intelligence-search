@@ -1,13 +1,15 @@
-# Data (too large for GitHub)
-data/raw/
-data/embeddings/*.npy
-*.json.gz
+# IDE
+.idea/
+.vscode/
+*.swp
 
 # Python
 __pycache__/
 *.pyc
+*.pyo
 .venv/
 venv/
+*.egg-info/
 
 # Jupyter
 .ipynb_checkpoints/
@@ -16,6 +18,22 @@ venv/
 .DS_Store
 Thumbs.db
 
-# Models
+# Data — too large for GitHub, regenerable
+data/raw/
+data/processed/
+data/embeddings/
+*.parquet
+*.json.gz
+*.npy
+
+# Trained models — regenerable from notebooks
 models/*.pkl
 models/*.joblib
+
+# Specific files to ignore
+notebooks/02_baseline.ipynb
+notebooks/Help.ipynb
+
+# Project folders that shouldn't be on github
+reports/
+anaconda_projects/
