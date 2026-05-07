@@ -37,3 +37,34 @@ notebooks/Help.ipynb
 # Project folders that shouldn't be on github
 reports/
 anaconda_projects/
+
+.env
+
+
+# Vector indexes / recommender artifacts
+*.npz
+*.index
+*.faiss
+
+# PyTorch / Hugging Face / LoRA checkpoints
+*.pt
+*.pth
+*.bin
+*.safetensors
+models/v3_lora_classifier*/
+models/**/checkpoint*/
+models/**/adapter_model.safetensors
+models/**/optimizer.pt
+models/**/scheduler.pt
+models/**/trainer_state.json
+models/**/training_args.bin
+
+# Experiment tracking / logs
+runs/
+mlruns/
+wandb/
+outputs/
+logs/
+
+# Local test/scratch files
+test_specter.py
