@@ -67,7 +67,8 @@ outputs/
 logs/
 
 # Local test/scratch files
-test_specter.pynotebooks/04_specter2_test.ipyn.ipynb
+test_specter.py
+notebooks/04_specter2_test.ipyn.ipynb
 notebooks/05_specter2_embeddings.ipynb
 
 # Local scratch notebooks/scripts
