@@ -1,247 +1,218 @@
-"""
-app.py — Streamlit web interface for the arXiv CS paper classifier.
+"""arXiv Intelligence Search — Streamlit app (V3 complete).
 
-Run locally with:
-    streamlit run app.py
-
-Opens at http://localhost:8501
+Tabs:
+  🏷️  Classify        — V1 single-label classifier (TF-IDF + LogReg)
+  🔎  Find similar    — V3 semantic recommender (SPECTER2 + FAISS)
+  💬  Ask a question  — V3 RAG (SPECTER2 + FAISS + Claude Haiku)
 """
 
 import pickle
 from pathlib import Path
 
-import numpy as np
 import pandas as pd
 import streamlit as st
 
 
-# ---------- Configuration ----------
-
-SCRIPT_DIR = Path(__file__).resolve().parent
-MODELS_DIR = SCRIPT_DIR / 'models'
-
-VECTORIZER_PATH = MODELS_DIR / 'v1_tfidf_vectorizer.pkl'
-MODEL_PATH      = MODELS_DIR / 'v1_logreg.pkl'
-ENCODER_PATH    = MODELS_DIR / 'v1_label_encoder.pkl'
-
-# Human-readable names for the cs.* category codes
-CATEGORY_NAMES = {
-    'cs.AI': 'Artificial Intelligence',
-    'cs.AR': 'Hardware Architecture',
-    'cs.CC': 'Computational Complexity',
-    'cs.CE': 'Computational Engineering',
-    'cs.CG': 'Computational Geometry',
-    'cs.CL': 'Computation and Language (NLP)',
-    'cs.CR': 'Cryptography and Security',
-    'cs.CV': 'Computer Vision',
-    'cs.CY': 'Computers and Society',
-    'cs.DB': 'Databases',
-    'cs.DC': 'Distributed, Parallel, Cluster Computing',
-    'cs.DL': 'Digital Libraries',
-    'cs.DM': 'Discrete Mathematics',
-    'cs.DS': 'Data Structures and Algorithms',
-    'cs.ET': 'Emerging Technologies',
-    'cs.FL': 'Formal Languages and Automata',
-    'cs.GR': 'Graphics',
-    'cs.GT': 'Computer Science and Game Theory',
-    'cs.HC': 'Human-Computer Interaction',
-    'cs.IR': 'Information Retrieval',
-    'cs.IT': 'Information Theory',
-    'cs.LG': 'Machine Learning',
-    'cs.LO': 'Logic in Computer Science',
-    'cs.MA': 'Multiagent Systems',
-    'cs.MM': 'Multimedia',
-    'cs.MS': 'Mathematical Software',
-    'cs.NA': 'Numerical Analysis',
-    'cs.NE': 'Neural and Evolutionary Computing',
-    'cs.NI': 'Networking and Internet Architecture',
-    'cs.OH': 'Other Computer Science',
-    'cs.OS': 'Operating Systems',
-    'cs.PF': 'Performance',
-    'cs.PL': 'Programming Languages',
-    'cs.RO': 'Robotics',
-    'cs.SC': 'Symbolic Computation',
-    'cs.SD': 'Sound',
-    'cs.SE': 'Software Engineering',
-    'cs.SI': 'Social and Information Networks',
-    'cs.SY': 'Systems and Control',
-}
-
-EXAMPLE_ABSTRACTS = {
-    'Computer vision (cs.CV)': (
-        "We propose a novel deep learning architecture for semantic image segmentation "
-        "based on a transformer encoder and a hierarchical decoder. Our model achieves "
-        "state-of-the-art results on Cityscapes and ADE20K benchmarks while reducing "
-        "inference latency by 40% compared to prior methods."
-    ),
-    'NLP (cs.CL)': (
-        "We present a method for cross-lingual sentence embeddings that aligns "
-        "representations across 50 languages without parallel training data. The approach "
-        "uses contrastive learning over multilingual masked language model outputs and "
-        "demonstrates strong zero-shot transfer on cross-lingual retrieval and "
-        "classification benchmarks."
-    ),
-    'Distributed systems (cs.DC)': (
-        "We introduce a Byzantine fault-tolerant consensus protocol that achieves linear "
-        "communication complexity in the partial synchrony model. Our algorithm tolerates "
-        "up to f < n/3 Byzantine failures and provides deterministic safety with "
-        "probabilistic liveness, suitable for permissioned blockchain deployments."
-    ),
-    'Robotics (cs.RO)': (
-        "This paper presents a sim-to-real reinforcement learning framework for "
-        "quadruped locomotion over uneven terrain. By combining domain randomization "
-        "with proprioceptive feedback, our policy transfers from simulation to a "
-        "physical robot without fine-tuning and maintains stable gait at speeds up to 2 m/s."
-    ),
-}
+# ── Page config ───────────────────────────────────────────────────────────────
+st.set_page_config(
+    page_title="arXiv Intelligence Search",
+    page_icon="🔬",
+    layout="centered",
+)
 
 
-# ---------- Model loading (cached) ----------
+# ── Cached resource loaders ───────────────────────────────────────────────────
 
 @st.cache_resource
-def load_model():
-    """Load the three pickled artifacts. Cached so it only runs once per session."""
-    missing = [p for p in [VECTORIZER_PATH, MODEL_PATH, ENCODER_PATH] if not p.exists()]
-    if missing:
-        st.error(
-            "Model files not found. Expected:\n"
-            + "\n".join(f"  - {p}" for p in missing)
-            + "\n\nRun `notebooks/03_baseline_classifier.ipynb` to train and save the model."
-        )
-        st.stop()
-    with open(VECTORIZER_PATH, 'rb') as f:
-        vectorizer = pickle.load(f)
-    with open(MODEL_PATH, 'rb') as f:
-        clf = pickle.load(f)
-    with open(ENCODER_PATH, 'rb') as f:
-        le = pickle.load(f)
-    return vectorizer, clf, le
+def load_classifier():
+    """V1 classifier — runs on CPU, fast to load."""
+    clf = pickle.load(open("models/v1_logreg.pkl", "rb"))
+    vec = pickle.load(open("models/v1_tfidf_vectorizer.pkl", "rb"))
+    le = pickle.load(open("models/v1_label_encoder.pkl", "rb"))
+    return clf, vec, le
 
 
-def predict(abstract, vectorizer, clf, le, top_k=5):
-    """Returns a DataFrame of top-k (category, full_name, probability)."""
-    vec = vectorizer.transform([abstract])
-    proba = clf.predict_proba(vec)[0]
-    top_idx = np.argsort(proba)[::-1][:top_k]
-    return pd.DataFrame({
-        'category': [le.classes_[i] for i in top_idx],
-        'name': [CATEGORY_NAMES.get(le.classes_[i], '') for i in top_idx],
-        'probability': [float(proba[i]) for i in top_idx],
-    })
+@st.cache_resource
+def load_recommender():
+    """V3 semantic recommender — loads SPECTER2 (~440 MB) + FAISS (~3 GB)."""
+    from src.arxiv_intel.recommender import Recommender
+    return Recommender()
 
 
-# ---------- Page configuration ----------
-
-st.set_page_config(
-    page_title='arXiv CS Classifier',
-    page_icon='📄',
-    layout='centered',
-)
+@st.cache_resource
+def load_rag():
+    """V3 RAG pipeline — reuses the recommender, adds Claude API client."""
+    from src.arxiv_intel.rag import RAG
+    return RAG(recommender=load_recommender())
 
 
-# ---------- Header ----------
-
-st.title('arXiv CS Paper Classifier')
+# ── Header ────────────────────────────────────────────────────────────────────
+st.title("🔬 arXiv Intelligence Search")
 st.caption(
-    'Paste a paper abstract; the model predicts which of 39 Computer Science '
-    'categories it most likely belongs to.'
+    "Classify papers by category, find semantically similar work, "
+    "or ask natural-language questions grounded in 902,645 arXiv CS papers."
 )
 
 
-# ---------- Sidebar: model info & controls ----------
+tab_classify, tab_similar, tab_ask = st.tabs(
+    ["🏷️ Classify", "🔎 Find similar papers", "💬 Ask a question"]
+)
 
-with st.sidebar:
-    st.header('About the model')
-    st.markdown(
-        "**Model:** TF-IDF + Logistic Regression  \n"
-        "**Trained on:** 722,116 arXiv CS papers  \n"
-        "**Categories:** 39 CS sub-fields  \n"
-        "**Test accuracy:** 73.5%  \n"
-        "**Test F1 (macro):** 0.607"
+
+# ── Tab 1: Classify (V1) ──────────────────────────────────────────────────────
+with tab_classify:
+    st.markdown("**Single-label category prediction across 39 CS sub-fields.**")
+    st.caption("Model: TF-IDF + Logistic Regression. Trained on 902k papers. Test accuracy 73.5%.")
+
+    classify_text = st.text_area(
+        "Paste an abstract",
+        height=180,
+        key="classify_input",
+        placeholder="Paste a paper abstract here…",
     )
-    st.divider()
 
-    st.subheader('Settings')
-    top_k = st.slider('Number of predictions to show', min_value=3, max_value=10, value=5)
+    if st.button("Classify", key="btn_classify", type="primary"):
+        if not classify_text.strip():
+            st.warning("Please paste an abstract first.")
+        else:
+            clf, vec, le = load_classifier()
+            X = vec.transform([classify_text])
+            proba = clf.predict_proba(X)[0]
+            top_idx = proba.argsort()[::-1][:5]
+            results = pd.DataFrame({
+                "Category": [le.classes_[i] for i in top_idx],
+                "Confidence": [f"{proba[i]:.1%}" for i in top_idx],
+            })
+            st.subheader("Top 5 predicted categories")
+            st.table(results)
 
-    st.divider()
+
+# ── Tab 2: Find similar (V3 — semantic) ───────────────────────────────────────
+with tab_similar:
+    st.markdown("**Semantic similarity search across 902k papers.**")
     st.caption(
-        'V1 MVP — single-label classification on abstract text only. '
-        'Multi-label and semantic embeddings are planned for V2.'
+        "Model: SPECTER2 (transformer trained on scientific papers) + FAISS HNSW index. "
+        "Finds papers by *meaning*, not just shared words."
     )
 
+    similar_text = st.text_area(
+        "Paste an abstract",
+        height=180,
+        key="similar_input",
+        placeholder="Paste an abstract here…",
+    )
+    top_k_similar = st.slider("Number of results", 5, 25, 10, key="topk_similar")
 
-# ---------- Main interface ----------
+    if st.button("Find similar papers", key="btn_similar", type="primary"):
+        if not similar_text.strip():
+            st.warning("Please paste an abstract first.")
+        else:
+            with st.spinner("Loading model and index (first call ~10s)…"):
+                recommender = load_recommender()
+            with st.spinner("Searching…"):
+                df = recommender.recommend(similar_text, top_k=top_k_similar)
 
-# Initialize session state for the textarea
-if 'abstract_text' not in st.session_state:
-    st.session_state.abstract_text = ''
+            st.subheader(f"Top {top_k_similar} semantically similar papers")
+            for _, row in df.iterrows():
+                title = row["title"]
+                abs_link = row["abs_url"]
+                pdf_link = row["pdf_url"]
+                arxiv_id = row["id"]
+                cat = row.get("first_cat", "")
+                year = row.get("year", "")
+                sim = f"{row['similarity']:.3f}"
 
-# Example chips
-st.markdown('**Try an example:**')
-example_cols = st.columns(len(EXAMPLE_ABSTRACTS))
-for col, (label, text) in zip(example_cols, EXAMPLE_ABSTRACTS.items()):
-    if col.button(label, use_container_width=True):
-        st.session_state.abstract_text = text
-
-# Text area
-abstract = st.text_area(
-    'Abstract',
-    value=st.session_state.abstract_text,
-    height=200,
-    placeholder='Paste a paper abstract here...',
-    label_visibility='collapsed',
-)
-
-# Predict button
-predict_clicked = st.button('Classify', type='primary', use_container_width=True)
+                st.markdown(
+                    f"**[{title}]({abs_link})**  "
+                    f"[[PDF]]({pdf_link})  ·  "
+                    f"`arXiv:{arxiv_id}`  ·  "
+                    f"`{cat}`  ·  "
+                    f"{year}  ·  "
+                    f"sim **{sim}**"
+                )
+                authors = row.get("authors", "")
+                if pd.notna(authors) and authors is not None:
+                    if isinstance(authors, list):
+                        authors = ", ".join(authors)
+                    if authors:
+                        st.caption(authors)
+                st.divider()
 
 
-# ---------- Run prediction ----------
+# ── Tab 3: Ask a question (V3 RAG) ────────────────────────────────────────────
+with tab_ask:
+    st.markdown("**Natural-language Q&A grounded in 902,645 arXiv papers.**")
+    st.caption(
+        "Architecture: SPECTER2 retrieval + Claude Haiku 4.5 generation. "
+        "Every claim cites a real paper from the corpus."
+    )
 
-if predict_clicked:
-    if not abstract or not abstract.strip():
-        st.warning('Please enter an abstract or pick an example.')
-    else:
-        vectorizer, clf, le = load_model()
-        results = predict(abstract, vectorizer, clf, le, top_k=top_k)
+    # Example questions to spark ideas
+    with st.expander("💡 Example questions"):
+        st.markdown("""
+        - *What are recent advances in vision transformers?*
+        - *How do contrastive learning methods compare to autoencoders for representation learning?*
+        - *What is mixture-of-experts and when is it useful?*
+        - *Explain how diffusion models work for text-to-image generation.*
+        - *What are the trade-offs between LoRA and full fine-tuning?*
+        """)
 
-        # Top prediction summary
-        top_row = results.iloc[0]
-        st.success(
-            f"**Top prediction:** `{top_row['category']}` — {top_row['name']}  \n"
-            f"**Confidence:** {top_row['probability']:.1%}"
-        )
+    question = st.text_area(
+        "Your question",
+        height=100,
+        key="rag_input",
+        placeholder="Ask anything answerable from CS research…",
+    )
 
-        # Bar chart
-        st.subheader('Top predictions')
-        chart_df = results.copy()
-        chart_df['label'] = chart_df['category'] + ' — ' + chart_df['name']
-        chart_df = chart_df.set_index('label')[['probability']]
-        st.bar_chart(chart_df, horizontal=True, height=max(200, top_k * 45))
+    col_a, col_b = st.columns([1, 2])
+    with col_a:
+        top_k_rag = st.slider("Papers to retrieve", 3, 10, 5, key="topk_rag")
 
-        # Detail table
-        with st.expander('Show full prediction table'):
-            display_df = results.copy()
-            display_df['probability'] = display_df['probability'].apply(lambda p: f'{p:.4f}')
-            display_df.columns = ['Category', 'Name', 'Probability']
-            st.dataframe(display_df, hide_index=True, use_container_width=True)
+    if st.button("Ask", key="btn_ask", type="primary"):
+        if not question.strip():
+            st.warning("Please enter a question first.")
+        else:
+            with st.spinner("Loading model and index (first call ~10s)…"):
+                rag = load_rag()
 
-        # Word count caveat for short input
-        wc = len(abstract.split())
-        if wc < 20:
-            st.info(
-                f'Heads up: this abstract is only {wc} words. '
-                f'The model was trained on abstracts of 20–500 words, '
-                f'so very short inputs may be less reliable.'
+            with st.spinner("Retrieving relevant papers and generating answer…"):
+                try:
+                    result = rag.answer(question, top_k=top_k_rag)
+                except Exception as e:
+                    st.error(f"Error calling the LLM: {e}")
+                    st.stop()
+
+            st.subheader("Answer")
+            st.markdown(result.answer)
+
+            # Cost meter
+            st.caption(
+                f"Tokens: {result.input_tokens:,} in · {result.output_tokens:,} out  ·  "
+                f"Cost: ${result.cost_usd:.5f}"
             )
 
+            st.subheader("Sources")
+            for src in result.sources:
+                cat = src.get("first_cat", "")
+                year = src.get("year", "")
+                arxiv_id = src.get("id", "")
+                title = src.get("title", "")
+                abs_link = src.get("abs_url", "")
+                pdf_link = src.get("pdf_url", "")
+                sim = f"{src['similarity']:.3f}"
+                rank = src["rank"]
 
-# ---------- Footer ----------
-
-st.divider()
-st.caption(
-    'Built for the LA SALLE final ML project • '
-    'Dataset: arXiv via Kaggle • '
-    'Single-label classification of `first_cat` (39 classes)'
-)
+                st.markdown(
+                    f"**[#{rank}] [{title}]({abs_link})**  "
+                    f"[[PDF]]({pdf_link})  ·  "
+                    f"`arXiv:{arxiv_id}`  ·  "
+                    f"`{cat}`  ·  "
+                    f"{year}  ·  "
+                    f"sim **{sim}**"
+                )
+                authors = src.get("authors", "")
+                if isinstance(authors, list):
+                    authors = ", ".join(authors)
+                if authors:
+                    st.caption(authors)
+                st.divider()
