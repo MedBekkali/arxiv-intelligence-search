@@ -1,0 +1,8 @@
+Experiment A:
+r=8
+alpha=16
+epochs=1
+best global threshold for macro F1 = 0.96
+val macro F1 = 0.5709
+best weighted threshold around 0.80
+weighted F1 ≈ 0.6484
