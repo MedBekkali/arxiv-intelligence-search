@@ -483,7 +483,7 @@ def load_training_state(
     scaler: torch.amp.GradScaler,
     device: torch.device,
 ) -> dict[str, Any]:
-    state = torch.load(checkpoint_path, map_location="cpu")
+    state = torch.load(checkpoint_path, map_location="cpu", weights_only=False)
     missing, unexpected = model.load_state_dict(state["trainable_model_state_dict"], strict=False)
     if unexpected:
         log(f"Warning: unexpected keys when loading resume checkpoint: {unexpected}")
