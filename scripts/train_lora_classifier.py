@@ -535,8 +535,18 @@ def main() -> None:
     parser.add_argument("--seed", type=int, default=42)
 
     parser.add_argument("--epochs", type=float, default=2.0)
+    parser.add_argument(
+        "--max-optimizer-steps",
+        type=int,
+        default=0,
+        help=(
+            "Optional hard stop at this optimizer step. "
+            "0 means unchanged behavior. Useful for short proxy experiments."
+        ),
+    )
     parser.add_argument("--batch-size", type=int, default=8, help="Micro-batch size per GPU step.")
-    parser.add_argument("--eval-batch-size", type=int, default=None, help="Validation batch size. Default: max(batch_size, 16).")
+    parser.add_argument("--eval-batch-size", type=int, default=None,
+                        help="Validation batch size. Default: max(batch_size, 16).")
     parser.add_argument("--grad-accum-steps", type=int, default=4)
     parser.add_argument("--max-length", type=int, default=256)
     parser.add_argument("--lr", type=float, default=1e-4)
@@ -685,6 +695,14 @@ def main() -> None:
 
     steps_per_epoch = math.ceil(len(train_loader) / args.grad_accum_steps)
     total_optimizer_steps = max(1, int(math.ceil(steps_per_epoch * args.epochs)))
+
+    # Optional hard stop for short proxy experiments.
+    # This does not change the LR schedule; it only stops training earlier.
+    if args.max_optimizer_steps > 0:
+        stop_optimizer_steps = min(total_optimizer_steps, args.max_optimizer_steps)
+    else:
+        stop_optimizer_steps = total_optimizer_steps
+
     warmup_steps = int(total_optimizer_steps * args.warmup_ratio)
 
     scheduler = get_linear_schedule_with_warmup(
@@ -702,7 +720,9 @@ def main() -> None:
     log(f"Eval batch size: {eval_batch_size}")
     log(f"Gradient accumulation steps: {args.grad_accum_steps}")
     log(f"Effective batch size: {args.batch_size * args.grad_accum_steps}")
-    log(f"Optimizer steps planned: {total_optimizer_steps:,}")
+    log(f"Optimizer steps planned by epochs: {total_optimizer_steps:,}")
+    if args.max_optimizer_steps > 0:
+        log(f"Hard stop at optimizer step: {stop_optimizer_steps:,}")
     log(f"Warmup steps: {warmup_steps:,}")
     log(f"Eval every optimizer steps: {args.eval_every:,}")
 
@@ -752,10 +772,12 @@ def main() -> None:
         "f1_micro": 0,
         "f1_weighted": 0,
     }
+
     evals_without_improvement = 0
     recent_losses: list[float] = []
     optimizer_step = 0
     train_iter_count = 0
+    last_eval_step: int | None = None
 
     # Optional resume.
     if args.resume_from is not None:
@@ -836,9 +858,10 @@ def main() -> None:
                     log(f"  best/ alias updated → {best_dir}")
 
     def run_eval_and_maybe_save(step: int, epoch_float: float, train_loss_recent: float, start_time: float) -> bool:
-        nonlocal evals_without_improvement, optimizer_step, train_iter_count, recent_losses
+        nonlocal evals_without_improvement, optimizer_step, train_iter_count, recent_losses, last_eval_step
 
         log(f"Evaluating at step {step:,} | epoch {epoch_float:.3f}")
+        last_eval_step = step
         probs, labels, val_loss = collect_validation_outputs(model, val_loader, device, args.fp16)
 
         sweep_rows = threshold_sweep(probs, labels, thresholds)
@@ -939,7 +962,11 @@ def main() -> None:
         _ = run_eval_and_maybe_save(step=0, epoch_float=0.0, train_loss_recent=float("nan"), start_time=start_time)
 
     max_train_batches = int(math.ceil(len(train_loader) * args.epochs))
-    pbar = tqdm(total=total_optimizer_steps, initial=optimizer_step, desc="optimizer steps")
+    pbar = tqdm(
+        total=stop_optimizer_steps,
+        initial=min(optimizer_step, stop_optimizer_steps),
+        desc="optimizer steps",
+    )
     optimizer.zero_grad(set_to_none=True)
 
     # If resumed, this approximate skip avoids immediately re-processing from train_iter_count=0.
@@ -1013,7 +1040,7 @@ def main() -> None:
                         log("Early stopping triggered.")
                         break
 
-                if optimizer_step >= total_optimizer_steps:
+                if optimizer_step >= stop_optimizer_steps:
                     stop_training = True
                     break
 
@@ -1039,14 +1066,18 @@ def main() -> None:
         return
 
     # Final eval.
-    recent_loss = float(np.mean(recent_losses)) if recent_losses else float("nan")
-    final_epoch_float = min(args.epochs, train_iter_count / max(len(train_loader), 1))
-    _ = run_eval_and_maybe_save(
-        step=optimizer_step,
-        epoch_float=final_epoch_float,
-        train_loss_recent=recent_loss,
-        start_time=start_time,
-    )
+    # Final eval. Skip if the last training step already triggered an eval.
+    if last_eval_step != optimizer_step:
+        recent_loss = float(np.mean(recent_losses)) if recent_losses else float("nan")
+        final_epoch_float = min(args.epochs, train_iter_count / max(len(train_loader), 1))
+        _ = run_eval_and_maybe_save(
+            step=optimizer_step,
+            epoch_float=final_epoch_float,
+            train_loss_recent=recent_loss,
+            start_time=start_time,
+        )
+    else:
+        log(f"Skipping final eval because step {optimizer_step:,} was already evaluated.")
 
     log("─" * 70)
     log("Training complete")
