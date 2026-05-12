@@ -1,26 +1,3 @@
-"""
-embed_papers.py — Compute SPECTER2 embeddings for the full arXiv CS corpus.
-
-Reads:
-    data/processed/arxiv_cs_clean.parquet   (~902k papers, V1 cleaning output)
-
-Writes:
-    models/v3_specter2_embeddings.npy       (~2.7 GB, shape: (n_papers, 768), float32)
-    models/v3_papers_meta.parquet           (~50 MB, aligned metadata for each paper)
-
-Behavior:
-    - Runs a 1000-paper speed test before committing to the full run
-    - Checkpoints intermediate results every 50,000 papers
-    - Resumes from the last checkpoint if interrupted
-    - Logs GPU temperature periodically (warns if throttling)
-
-Usage:
-    python scripts/embed_papers.py
-    python scripts/embed_papers.py --resume       # explicit resume (default behavior)
-    python scripts/embed_papers.py --restart      # ignore checkpoints, start over
-    python scripts/embed_papers.py --batch-size 16  # smaller batches if OOM
-"""
-
 from __future__ import annotations
 
 import argparse
@@ -52,15 +29,12 @@ MODEL_NAME = 'allenai/specter2_base'
 EMBEDDING_DIM = 768
 META_COLUMNS = ['id', 'title', 'authors', 'year', 'first_cat', 'cs_cats']
 
-# Defaults — overridable via CLI
 DEFAULT_BATCH_SIZE = 32
 DEFAULT_MAX_SEQ_LENGTH = 256       # SPECTER2's training length
 CHECKPOINT_EVERY = 50_000          # save partial progress every N papers
 GPU_CHECK_EVERY = 10_000           # check GPU temp every N papers
 GPU_TEMP_WARN = 80                 # warn above this temp (Celsius)
 
-
-# ---------- Helpers ----------
 
 def get_gpu_temp() -> int | None:
     """Return current GPU temperature in Celsius, or None if unavailable."""
@@ -117,11 +91,7 @@ def embed_corpus(
     start_index: int = 0,
     existing_embeddings: np.ndarray | None = None,
 ) -> np.ndarray:
-    """
-    Embed all abstracts in chunks, checkpointing periodically.
 
-    If start_index > 0, resumes from existing_embeddings (must have shape (start_index, 768)).
-    """
     n_total = len(abstracts)
     embeddings = np.zeros((n_total, EMBEDDING_DIM), dtype=np.float32)
 
@@ -140,7 +110,6 @@ def embed_corpus(
     last_gpu_check = start_index
     last_checkpoint = start_index
 
-    # Process in chunks of CHECKPOINT_EVERY for safe checkpointing
     chunk_size = CHECKPOINT_EVERY
     for chunk_start in range(start_index, n_total, chunk_size):
         chunk_end = min(chunk_start + chunk_size, n_total)
@@ -157,7 +126,6 @@ def embed_corpus(
 
         pbar.update(len(chunk))
 
-        # GPU temperature check
         if chunk_end - last_gpu_check >= GPU_CHECK_EVERY:
             temp = get_gpu_temp()
             if temp is not None:
@@ -166,7 +134,6 @@ def embed_corpus(
                     log(f"⚠️  GPU at {temp}°C — thermal throttling likely. Consider pausing.")
             last_gpu_check = chunk_end
 
-        # Checkpoint
         if chunk_end - last_checkpoint >= CHECKPOINT_EVERY or chunk_end == n_total:
             log(f"Checkpoint: saving {chunk_end:,} embeddings to {CHECKPOINT_PATH.name}")
             np.save(CHECKPOINT_PATH, embeddings[:chunk_end])
@@ -207,19 +174,16 @@ def main() -> None:
 
     MODELS_DIR.mkdir(exist_ok=True, parents=True)
 
-    # ---------- 2. Load corpus ----------
     log(f"Loading corpus from {DATA_PATH.name}...")
     t0 = time.time()
     df = pd.read_parquet(DATA_PATH)
     log(f"Loaded {len(df):,} papers in {time.time() - t0:.1f}s")
 
-    # Verify required columns
     required = {'id', 'abstract', 'title'}
     missing = required - set(df.columns)
     if missing:
         sys.exit(f"❌ Missing required columns: {missing}")
 
-    # Build the input text. SPECTER2 was trained on title + [SEP] + abstract.
     log("Building input texts (title + abstract)...")
     sep = model_sep_token = "[SEP]"
     df['_input'] = df['title'].fillna('') + ' ' + sep + ' ' + df['abstract'].fillna('')
@@ -281,7 +245,6 @@ def main() -> None:
     keep_cols = [c for c in META_COLUMNS if c in df.columns]
     df[keep_cols].to_parquet(META_PATH, index=False)
 
-    # Clean up checkpoint files now that final outputs exist
     if CHECKPOINT_PATH.exists():
         CHECKPOINT_PATH.unlink()
     if PROGRESS_PATH.exists():

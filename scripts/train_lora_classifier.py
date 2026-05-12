@@ -1,55 +1,3 @@
-"""
-train_lora_classifier.py — LoRA fine-tuning for SPECTER2 multi-label arXiv CS classification.
-
-Checkpointed version.
-
-Adds:
-    - Separate --eval-batch-size so batch 64 training does not force huge eval batches.
-    - Saves snapshot adapters at every evaluation step.
-    - Saves separate best_macro/, best_micro/, best_weighted/ checkpoints.
-    - Keeps backward-compatible best/ as an alias of best_macro/.
-    - Saves rolling checkpoint_last.pt with trainable weights + optimizer/scheduler/scaler state.
-    - Optional --resume-from checkpoint_last.pt.
-    - Saves threshold sweep CSV at every evaluation.
-
-Important:
-    checkpoint_last.pt restores model/optimizer/scheduler/scaler state and counters.
-    DataLoader mid-epoch order is not perfectly reproduced, but this is still enough
-    to avoid losing the learned weights and optimizer state after an interruption.
-
-Experiment E — changes from Experiment D:
-    - pos_weight clamped to [1, max_pos_weight] (default 50) to prevent rare-class
-      gradient domination that caused probability miscalibration in Exp D.
-    - Threshold sweep lowered to 0.20-0.60 (was 0.70-0.99).
-    - Default target_modules now includes "key" alongside "query" and "value".
-    - Default LR lowered to 1e-4 (was 2e-4).
-    - Default epochs raised to 2 (was 1).
-    - Default eval_every set to 2000 (was 3000).
-
-Experiment E run:
-    python scripts/train_lora_classifier.py `
-      --output-dir models/v3_lora_classifier_r32_alpha64_len384_batch64_expE `
-      --epochs 2 `
-      --batch-size 64 `
-      --eval-batch-size 32 `
-      --grad-accum-steps 1 `
-      --max-length 384 `
-      --lr 1e-4 `
-      --lora-r 32 `
-      --lora-alpha 64 `
-      --target-modules query key value `
-      --eval-every 2000 `
-      --max-val-samples 30000 `
-      --patience 5 `
-      --thresholds "0.20,0.25,0.30,0.35,0.40,0.45,0.50,0.55,0.60" `
-      --fp16
-
-Resume:
-    python scripts/train_lora_classifier.py `
-      --resume-from models/v3_lora_classifier_r32_alpha64_len384_batch64_expE/checkpoint_last.pt `
-      ...same args as original run...
-"""
-
 from __future__ import annotations
 
 import argparse
@@ -850,12 +798,12 @@ def main() -> None:
                     metrics=selected_metrics,
                 )
                 save_model_artifact(model, tokenizer, categories, save_dir, save_info, overwrite=True)
-                log(f"✓ New best {metric_name}: {best_scores[metric_name]:.4f} — saved to {save_dir}")
+                log(f" New best {metric_name}: {best_scores[metric_name]:.4f} — saved to {save_dir}")
 
                 # Backward compatibility: best/ mirrors best_macro/.
                 if metric_name == "f1_macro":
                     save_model_artifact(model, tokenizer, categories, best_dir, save_info, overwrite=True)
-                    log(f"  best/ alias updated → {best_dir}")
+                    log(f"  best/ alias updated -> {best_dir}")
 
     def run_eval_and_maybe_save(step: int, epoch_float: float, train_loss_recent: float, start_time: float) -> bool:
         nonlocal evals_without_improvement, optimizer_step, train_iter_count, recent_losses, last_eval_step
@@ -942,7 +890,7 @@ def main() -> None:
             evals_without_improvement=evals_without_improvement,
             recent_losses=recent_losses,
         )
-        log(f"✓ Rolling resume checkpoint saved → {checkpoint_last_path}")
+        log(f"OK Rolling resume checkpoint saved -> {checkpoint_last_path}")
 
         if device.type == "cuda":
             log(cuda_memory_summary())
@@ -1079,12 +1027,12 @@ def main() -> None:
     else:
         log(f"Skipping final eval because step {optimizer_step:,} was already evaluated.")
 
-    log("─" * 70)
+    log("-" * 70)
     log("Training complete")
     log(f"Elapsed: {format_seconds(time.time() - start_time)}")
-    log(f"Best macro F1: {best_scores['f1_macro']:.4f} at step {best_steps['f1_macro']:,} → {best_macro_dir}")
-    log(f"Best micro F1: {best_scores['f1_micro']:.4f} at step {best_steps['f1_micro']:,} → {best_micro_dir}")
-    log(f"Best weighted F1: {best_scores['f1_weighted']:.4f} at step {best_steps['f1_weighted']:,} → {best_weighted_dir}")
+    log(f"Best macro F1: {best_scores['f1_macro']:.4f} at step {best_steps['f1_macro']:,} -> {best_macro_dir}")
+    log(f"Best micro F1: {best_scores['f1_micro']:.4f} at step {best_steps['f1_micro']:,} -> {best_micro_dir}")
+    log(f"Best weighted F1: {best_scores['f1_weighted']:.4f} at step {best_steps['f1_weighted']:,} -> {best_weighted_dir}")
     log(f"Backward-compatible best checkpoint: {best_dir}")
     log(f"Rolling resume checkpoint: {checkpoint_last_path}")
     log(f"Metrics history: {history_path}")

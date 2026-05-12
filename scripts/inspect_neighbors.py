@@ -1,4 +1,3 @@
-"""Quick sanity check: what are paper #0's nearest neighbors?"""
 import pandas as pd
 
 meta = pd.read_parquet('models/v3_papers_meta.parquet')

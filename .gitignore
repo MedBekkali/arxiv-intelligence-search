@@ -1,76 +1,67 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Virtual environments
+.venv/
+venv/
+
 # IDE
 .idea/
 .vscode/
 *.swp
+*.swo
 
-# Python
-__pycache__/
-*.pyc
-*.pyo
-.venv/
-venv/
-*.egg-info/
+# Environment
+.env
 
 # Jupyter
-.ipynb_checkpoints/
+notebooks/.ipynb_checkpoints/
+
+# Data (too large for git)
+data/raw/
+data/processed/*.parquet
+data/embeddings/
+
+# Models (too large for git)
+models/*.npy
+models/*.npz
+models/*.pkl
+models/*.index
+models/*.parquet
+models/v3_lora_classifier*/
+models/v3_lora_classifier_r32_alpha64_len384_batch32_expC/
+models/v3_lora_classifier_r32_alpha64_len384_batch64_*/
+models/test_max_steps_dryrun/
+models/experiments/
+
+# Proxy run artifacts
+models/proxy_runs_*/
+logs/
+
+# Legacy / leftover
+anaconda_projects/
+modelsexperiments
+app/
+reports/
+test_specter.py
+notebooks/Help.ipynb
+notebooks/04_specter2_test.ipyn.ipynb
 
 # OS
 .DS_Store
 Thumbs.db
 
-# Data — too large for GitHub, regenerable
-data/raw/
-data/processed/
-data/embeddings/
-*.parquet
-*.json.gz
-*.npy
-
-# Trained models — regenerable from notebooks
-models/*.pkl
-models/*.joblib
-
-# Specific files to ignore
+# Lock file (uv-managed, optional to track)
+# uv.lock
+# Local exploratory notebooks
 notebooks/02_baseline.ipynb
-notebooks/Help.ipynb
-
-# Project folders that shouldn't be on github
-reports/
-anaconda_projects/
-
-.env
-
-
-# Vector indexes / recommender artifacts
-*.npz
-*.index
-*.faiss
-
-# PyTorch / Hugging Face / LoRA checkpoints
-*.pt
-*.pth
-*.bin
-*.safetensors
-models/v3_lora_classifier*/
-models/**/checkpoint*/
-models/**/adapter_model.safetensors
-models/**/optimizer.pt
-models/**/scheduler.pt
-models/**/trainer_state.json
-models/**/training_args.bin
-
-# Experiment tracking / logs
-runs/
-mlruns/
-wandb/
-outputs/
-logs/
-
-# Local test/scratch files
-test_specter.py
-notebooks/04_specter2_test.ipyn.ipynb
 notebooks/05_specter2_embeddings.ipynb
 
-# Local scratch notebooks/scripts
-notebooks/*specter2*.ipynb
-test_specter.py
+# Local experiment runners / old training variants
+scripts/run_proxy_experiments.ps1
+scripts/train_lora_classifier_checkpointed.py

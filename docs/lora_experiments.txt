@@ -6,3 +6,14 @@ best global threshold for macro F1 = 0.96
 val macro F1 = 0.5709
 best weighted threshold around 0.80
 weighted F1 ≈ 0.6484
+
+
+Proxy experiment conclusion:
+max_pos_weight=75 gave the best 3000-step macro F1 among tested caps.
+
+F / 75:  0.5503 macro F1
+G / 100: 0.5464 macro F1
+H / 150: 0.5444 macro F1
+
+Increasing the cap beyond 75 did not improve macro F1 and made predictions more conservative.
+Next step: continue Exp F to 6000 steps and compare against Exp E.

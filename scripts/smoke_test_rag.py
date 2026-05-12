@@ -1,11 +1,3 @@
-"""Quick CLI test for the RAG pipeline.
-
-Usage:
-    python scripts/test_rag.py
-    python scripts/test_rag.py --question "your custom question"
-    python scripts/test_rag.py --top-k 8
-"""
-
 import argparse
 import sys
 from pathlib import Path
