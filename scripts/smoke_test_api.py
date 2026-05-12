@@ -1,4 +1,3 @@
-"""Quick smoke test: confirm Anthropic API works from this venv."""
 import os
 from pathlib import Path
 
