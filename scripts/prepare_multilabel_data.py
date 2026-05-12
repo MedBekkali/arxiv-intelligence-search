@@ -1,30 +1,3 @@
-"""
-prepare_multilabel_data.py — Build train/val/test splits for multi-label fine-tuning.
-
-Reads:
-    data/processed/arxiv_cs_clean.parquet
-
-Writes:
-    models/v3_categories.json              — canonical sorted list of 39 CS categories
-    data/processed/train.parquet           — ~722k papers, columns: id, title, abstract, label_indices
-    data/processed/val.parquet             — ~90k papers
-    data/processed/test.parquet            — ~90k papers
-    models/v3_pos_weights.npy              — (39,) pos_weight tensor for BCEWithLogitsLoss
-
-Notes:
-    - label_indices is a list[int] of the category positions a paper belongs to
-      (e.g. [4, 17] means the paper is in categories 4 and 17 of v3_categories.json).
-      We store indices instead of multi-hot vectors to save 35M zeros on disk.
-    - Multi-label stratification preserves rare-category proportions across splits,
-      which a naive shuffle would not — see iterstrat library.
-    - pos_weights are computed on train only (no test leakage) and used later as
-      pos_weight argument to BCEWithLogitsLoss to counter class imbalance.
-
-Usage:
-    python scripts/prepare_multilabel_data.py
-    python scripts/prepare_multilabel_data.py --val-frac 0.1 --test-frac 0.1 --seed 42
-"""
-
 from __future__ import annotations
 
 import argparse

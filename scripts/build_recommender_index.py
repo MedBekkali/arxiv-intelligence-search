@@ -1,17 +1,3 @@
-"""One-time builder for the V2 recommender index.
-
-Usage:
-    python scripts/build_recommender_index.py
-
-Reads:
-    data/processed/papers_clean.parquet   (the V1 clean corpus)
-    models/tfidf_vectorizer.pkl           (the V1 fitted vectorizer)
-
-Writes:
-    models/v2_recommender_matrix.npz      (L2-normalised TF-IDF matrix)
-    models/v2_recommender_meta.parquet    (id, title, authors, year, first_cat)
-"""
-
 from __future__ import annotations
 
 import pickle

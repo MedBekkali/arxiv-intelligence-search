@@ -1,16 +1,3 @@
-"""
-predict.py — Predict the CS category of an arXiv paper abstract.
-
-Usage:
-    python predict.py "Your abstract text here..."
-    python predict.py --file path/to/abstract.txt
-    python predict.py --top-k 10 "Your abstract..."
-    cat abstract.txt | python predict.py
-
-Loads the V1 model trained in `03_baseline_classifier.ipynb` and prints
-the top-K predicted categories with confidence scores.
-"""
-
 import argparse
 import pickle
 import sys
